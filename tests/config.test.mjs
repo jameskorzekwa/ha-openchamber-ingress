@@ -10,11 +10,16 @@ const addon = await readFile(
   new URL("../openchamber_ingress/config.yaml", import.meta.url),
   "utf8"
 );
+const dockerfile = await readFile(
+  new URL("../openchamber_ingress/Dockerfile", import.meta.url),
+  "utf8"
+);
 
 test("keeps the proxy behind Supervisor ingress", () => {
   assert.match(addon, /^ingress: true$/m);
-  assert.match(addon, /^panel_admin: true$/m);
   assert.doesNotMatch(addon, /^ports:/m);
+  assert.doesNotMatch(addon, /^ingress_port:/m);
+  assert.match(dockerfile, /^HEALTHCHECK CMD wget .*\/healthz/m);
   assert.match(nginx, /allow 172\.30\.32\.2;/);
   assert.match(nginx, /deny all;/);
 });

@@ -11,3 +11,5 @@ RUN apk add --no-cache ca-certificates nginx
 COPY rootfs /
 
 RUN chmod 0755 /etc/s6-overlay/s6-rc.d/openchamber-ingress/run
+
+HEALTHCHECK CMD wget -q -O /dev/null http://127.0.0.1:8099/healthz || exit 1

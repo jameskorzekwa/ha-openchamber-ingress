@@ -9,9 +9,6 @@ arch:
   - amd64
 image: "ghcr.io/jameskorzekwa/{arch}-ha-openchamber-ingress"
 ingress: true
-ingress_port: 8099
 ingress_stream: true
-panel_admin: true
 panel_icon: "mdi:message-text-outline"
 panel_title: "OpenChamber"
-watchdog: "http://[HOST]:[PORT:8099]/healthz"

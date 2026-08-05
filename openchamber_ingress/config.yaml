@@ -1,0 +1,14 @@
+name: "OpenChamber"
+description: "Open OpenChamber securely through Home Assistant ingress"
+version: "0.0.0"
+slug: "openchamber_ingress"
+url: "https://github.com/jameskorzekwa/ha-openchamber-ingress/tree/main/openchamber_ingress"
+init: false
+arch:
+  - aarch64
+  - amd64
+image: "ghcr.io/jameskorzekwa/{arch}-ha-openchamber-ingress"
+ingress: true
+ingress_stream: true
+panel_icon: "mdi:message-text-outline"
+panel_title: "OpenChamber"

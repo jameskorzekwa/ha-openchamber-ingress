@@ -1,0 +1,13 @@
+{
+  "name": "ha-openchamber-ingress",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint . && bash -n openchamber_ingress/rootfs/etc/s6-overlay/s6-rc.d/openchamber-ingress/run",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "eslint": "9.39.2"
+  }
+}

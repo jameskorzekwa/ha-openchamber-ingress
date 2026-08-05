@@ -1,0 +1,200 @@
+name: CI and release
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-release-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lint-test:
+    name: Lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install test tools
+        run: npm ci
+
+      - name: Lint JavaScript
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+      - name: Run Home Assistant add-on lint
+        uses: frenck/action-addon-linter@v2.21.0
+        with:
+          path: ./openchamber_ingress
+
+      - name: Run ShellCheck
+        run: shellcheck -e SC1008 -s bash openchamber_ingress/rootfs/etc/s6-overlay/s6-rc.d/openchamber-ingress/run
+
+  test-build:
+    name: Test build ${{ matrix.arch }} image
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Test build add-on
+        uses: home-assistant/builder/actions/build-image@2026.06.0
+        with:
+          arch: ${{ matrix.arch }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: ./openchamber_ingress
+          cosign: "false"
+          image: ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-ha-openchamber-ingress
+          image-tags: test
+          version: test
+
+  prepare-release:
+    name: Bump release version
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - lint-test
+      - test-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.bump.outputs.sha }}
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - name: Check out tested revision
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Bump patch version
+        id: bump
+        env:
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          remote_sha="$(git rev-parse origin/main)"
+
+          if [[ "$remote_sha" != "$TESTED_SHA" ]]; then
+            parent_sha="$(git rev-parse "${remote_sha}^" 2>/dev/null || true)"
+            changed_files="$(git diff-tree --no-commit-id --name-only -r "$remote_sha")"
+            release_subject="$(git log -1 --format=%s "$remote_sha")"
+            if [[ "$parent_sha" != "$TESTED_SHA" || "$changed_files" != "openchamber_ingress/config.yaml" || ! "$release_subject" =~ ^Release\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "A newer main revision exists; its workflow will release it."
+              exit 0
+            fi
+
+            git checkout "$remote_sha"
+            version="$(awk -F '"' '/^version: / { print $2; exit }' openchamber_ingress/config.yaml)"
+            if [[ "$release_subject" != "Release $version" ]]; then
+              echo "Unexpected release version in $remote_sha." >&2
+              exit 1
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$version" >/dev/null 2>&1; then
+              echo "Version $version is already released."
+              exit 0
+            fi
+          else
+            current_version="$(awk -F '"' '/^version: / { print $2; exit }' openchamber_ingress/config.yaml)"
+            IFS=. read -r major minor patch <<< "$current_version"
+            if [[ ! "$major" =~ ^[0-9]+$ || ! "$minor" =~ ^[0-9]+$ || ! "$patch" =~ ^[0-9]+$ ]]; then
+              echo "Invalid add-on version: $current_version" >&2
+              exit 1
+            fi
+
+            version="$major.$minor.$((patch + 1))"
+            sed -i "s/^version: .*/version: \"$version\"/" openchamber_ingress/config.yaml
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add openchamber_ingress/config.yaml
+            git commit -m "Release $version"
+            git push origin HEAD:main
+            remote_sha="$(git rev-parse HEAD)"
+          fi
+
+          echo "sha=$remote_sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ matrix.arch }} image
+    if: needs.prepare-release.outputs.version != ''
+    needs: prepare-release
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+    steps:
+      - name: Check out release revision
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.prepare-release.outputs.sha }}
+
+      - name: Build and publish add-on
+        uses: home-assistant/builder/actions/build-image@2026.06.0
+        with:
+          arch: ${{ matrix.arch }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: ./openchamber_ingress
+          image: ghcr.io/${{ github.repository_owner }}/${{ matrix.arch }}-ha-openchamber-ingress
+          image-tags: |
+            ${{ needs.prepare-release.outputs.version }}
+            latest
+          push: "true"
+          version: ${{ needs.prepare-release.outputs.version }}
+
+  release:
+    name: Create GitHub release
+    if: needs.prepare-release.outputs.version != ''
+    needs:
+      - prepare-release
+      - publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ needs.prepare-release.outputs.sha }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: >-
+          gh release create "$VERSION"
+          --repo "$GITHUB_REPOSITORY"
+          --target "$RELEASE_SHA"
+          --title "$VERSION"
+          --generate-notes

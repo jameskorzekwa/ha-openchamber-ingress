@@ -10,6 +10,7 @@ const shimSource = await readFile(
 
 function createBrowser({ route = "/", storedRoute = null, session = "session-id" } = {}) {
   const calls = {};
+  const eventListeners = new Map();
   const location = new URL(`https://home.jklocal.us/api/hassio_ingress/${session}${route}`);
   const storage = new Map();
   if (storedRoute !== null) {
@@ -108,7 +109,9 @@ function createBrowser({ route = "/", storedRoute = null, session = "session-id"
     open(url) {
       calls.open = url;
     },
-    addEventListener() {}
+    addEventListener(name, listener) {
+      eventListeners.set(name, listener);
+    }
   };
   window.window = window;
 
@@ -124,7 +127,7 @@ function createBrowser({ route = "/", storedRoute = null, session = "session-id"
     String
   });
   vm.runInContext(shimSource, context);
-  return { calls, storage, window };
+  return { calls, eventListeners, storage, window };
 }
 
 test("rewrites root-relative HTTP APIs exactly once", () => {
@@ -195,4 +198,12 @@ test("does not restore an ingress path saved by an older session", () => {
   });
 
   assert.equal(calls.replaceHistory, undefined);
+});
+
+test("saves the current route when Home Assistant removes the panel", () => {
+  const { eventListeners, storage } = createBrowser({ route: "/?session=ses_456" });
+
+  eventListeners.get("pagehide")();
+
+  assert.equal(storage.get("openchamber.ingress.lastRoute"), "/?session=ses_456");
 });

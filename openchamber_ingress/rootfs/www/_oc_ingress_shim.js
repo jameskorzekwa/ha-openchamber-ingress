@@ -15,6 +15,62 @@
 
   window.__OPENCHAMBER_INGRESS_SHIM__ = true;
 
+  var lastRouteStorageKey = "openchamber.ingress.lastRoute";
+
+  function relativeRoute(value) {
+    var parsed;
+    try {
+      parsed = new URL(String(value), window.location.href);
+    } catch {
+      return "";
+    }
+    if (parsed.host !== window.location.host) {
+      return "";
+    }
+    if (parsed.pathname !== ingressPath && !parsed.pathname.startsWith(ingressPath + "/")) {
+      return "";
+    }
+    var pathname = parsed.pathname.slice(ingressPath.length) || "/";
+    return pathname + parsed.search + parsed.hash;
+  }
+
+  function validStoredRoute(route) {
+    return typeof route === "string"
+      && route.startsWith("/")
+      && !route.startsWith("//")
+      && !route.startsWith("/api/hassio_ingress/");
+  }
+
+  function storeRoute(value) {
+    var route = relativeRoute(value);
+    if (!validStoredRoute(route)) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(lastRouteStorageKey, route);
+    } catch {
+      // Storage can be unavailable in a restricted webview; navigation still works.
+    }
+  }
+
+  function restoreRoute() {
+    if (relativeRoute(window.location.href) !== "/") {
+      return;
+    }
+    var route = "";
+    try {
+      route = window.localStorage.getItem(lastRouteStorageKey) || "";
+    } catch {
+      return;
+    }
+    if (!validStoredRoute(route) || route === "/") {
+      return;
+    }
+    window.history.replaceState(window.history.state, "", ingressPath + route);
+  }
+
+  restoreRoute();
+
   function rewriteUrl(value, websocket) {
     if (value === null || value === undefined) {
       return value;
@@ -153,9 +209,19 @@
       if (url !== null && url !== undefined) {
         url = rewriteUrl(url, false);
       }
-      return nativeMethod.call(this, state, unused, url);
+      var result = nativeMethod.call(this, state, unused, url);
+      storeRoute(url === null || url === undefined ? window.location.href : url);
+      return result;
     };
   });
+
+  if (typeof window.addEventListener === "function") {
+    ["hashchange", "pagehide", "popstate"].forEach(function persistOnEvent(name) {
+      window.addEventListener(name, function persistCurrentRoute() {
+        storeRoute(window.location.href);
+      });
+    });
+  }
 
   if (typeof window.open === "function") {
     var nativeWindowOpen = window.open;

@@ -6,14 +6,14 @@ This add-on proxies the private OpenChamber service at `https://openchamber.jklo
 
 OpenChamber assumes it runs at the root of a website. The add-on injects a small compatibility shim and rewrites HTML asset paths so the application can run under Home Assistant's generated ingress path. WebSocket and server-sent event streams remain unbuffered.
 
-Sign in once with the existing OpenChamber password and select **Trust this device**. This session is separate from the direct LAN site's session because the two pages use different browser origins.
+Sign in once with the existing OpenChamber password and select **Trust this device**. OpenChamber's trusted-device session lasts up to seven days. The add-on keeps that session across Home Assistant ingress-session changes and restores the last OpenChamber route when the panel is reopened. This session remains separate from the direct LAN site's session because the two pages use different browser origins.
 
 ## Security
 
 - The add-on publishes no host port.
 - The ingress panel is restricted to Home Assistant administrators.
 - Only the Supervisor ingress proxy and the local health check may connect to Nginx.
-- The OpenChamber session cookie is scoped to the generated ingress path.
+- The HttpOnly OpenChamber session cookie is scoped to Home Assistant ingress and survives replacement of HA's generated ingress-session path.
 - OpenChamber remains reachable on the trusted local network through its existing Caddy endpoint; this add-on does not make that endpoint public.
 - The add-on verifies the TLS certificate presented by the upstream Caddy service.
 

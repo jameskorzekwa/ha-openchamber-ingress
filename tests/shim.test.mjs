@@ -8,9 +8,14 @@ const shimSource = await readFile(
   "utf8"
 );
 
-function createBrowser() {
+function createBrowser({ route = "/", storedRoute = null, session = "session-id" } = {}) {
   const calls = {};
-  const location = new URL("https://home.jklocal.us/api/hassio_ingress/session-id/");
+  const eventListeners = new Map();
+  const location = new URL(`https://home.jklocal.us/api/hassio_ingress/${session}${route}`);
+  const storage = new Map();
+  if (storedRoute !== null) {
+    storage.set("openchamber.ingress.lastRoute", storedRoute);
+  }
 
   class Request {
     constructor(input) {
@@ -46,11 +51,29 @@ function createBrowser() {
   const document = {
     baseURI: location.href
   };
+  const applyHistoryUrl = (url) => {
+    if (url !== null && url !== undefined) {
+      location.href = new URL(String(url), location.href).href;
+    }
+  };
   const history = {
+    state: null,
     pushState(_state, _unused, url) {
       calls.history = url;
+      applyHistoryUrl(url);
     },
-    replaceState() {}
+    replaceState(_state, _unused, url) {
+      calls.replaceHistory = url;
+      applyHistoryUrl(url);
+    }
+  };
+  const localStorage = {
+    getItem(key) {
+      return storage.get(key) ?? null;
+    },
+    setItem(key, value) {
+      storage.set(key, String(value));
+    }
   };
   const navigator = {
     sendBeacon(url) {
@@ -65,11 +88,12 @@ function createBrowser() {
   };
 
   const window = {
-    __OPENCHAMBER_INGRESS_PATH__: "/api/hassio_ingress/session-id",
+    __OPENCHAMBER_INGRESS_PATH__: `/api/hassio_ingress/${session}`,
     location,
     document,
     history,
     navigator,
+    localStorage,
     Request,
     WebSocket,
     EventSource,
@@ -84,6 +108,9 @@ function createBrowser() {
     },
     open(url) {
       calls.open = url;
+    },
+    addEventListener(name, listener) {
+      eventListeners.set(name, listener);
     }
   };
   window.window = window;
@@ -100,7 +127,7 @@ function createBrowser() {
     String
   });
   vm.runInContext(shimSource, context);
-  return { calls, window };
+  return { calls, eventListeners, storage, window };
 }
 
 test("rewrites root-relative HTTP APIs exactly once", () => {
@@ -134,7 +161,7 @@ test("patches streaming and request APIs", () => {
 });
 
 test("patches navigation, workers, service workers, and DOM attributes", () => {
-  const { calls, window } = createBrowser();
+  const { calls, storage, window } = createBrowser();
 
   window.history.pushState({}, "", "/session/one");
   new window.Worker("/assets/worker.js");
@@ -144,8 +171,39 @@ test("patches navigation, workers, service workers, and DOM attributes", () => {
   window.open("/session/two");
 
   assert.equal(calls.history, "/api/hassio_ingress/session-id/session/one");
+  assert.equal(storage.get("openchamber.ingress.lastRoute"), "/session/one");
   assert.equal(calls.worker, "/api/hassio_ingress/session-id/assets/worker.js");
   assert.equal(calls.serviceWorker, "/api/hassio_ingress/session-id/service-worker.js");
   assert.deepEqual(calls.attribute, ["src", "/api/hassio_ingress/session-id/assets/image.png"]);
   assert.equal(calls.open, "/api/hassio_ingress/session-id/session/two");
+});
+
+test("restores the last route under a new ingress session", () => {
+  const { calls, window } = createBrowser({
+    session: "new-session-id",
+    storedRoute: "/?session=ses_123&view=messages"
+  });
+
+  assert.equal(
+    calls.replaceHistory,
+    "/api/hassio_ingress/new-session-id/?session=ses_123&view=messages"
+  );
+  assert.equal(window.location.search, "?session=ses_123&view=messages");
+});
+
+test("does not restore an ingress path saved by an older session", () => {
+  const { calls } = createBrowser({
+    session: "new-session-id",
+    storedRoute: "/api/hassio_ingress/old-session-id/?session=ses_123"
+  });
+
+  assert.equal(calls.replaceHistory, undefined);
+});
+
+test("saves the current route when Home Assistant removes the panel", () => {
+  const { eventListeners, storage } = createBrowser({ route: "/?session=ses_456" });
+
+  eventListeners.get("pagehide")();
+
+  assert.equal(storage.get("openchamber.ingress.lastRoute"), "/?session=ses_456");
 });

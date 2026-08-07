@@ -37,6 +37,9 @@ test("verifies and adapts the upstream OpenChamber endpoint", () => {
   assert.match(nginx, /proxy_ssl_name openchamber\.jklocal\.us;/);
   assert.match(nginx, /proxy_set_header Origin \$upstream_origin;/);
   assert.match(nginx, /proxy_cookie_path \/ \/api\/hassio_ingress\//);
+  assert.match(nginx, /proxy_set_header X-Forwarded-Proto \$browser_scheme;/);
+  assert.match(nginx, /map \$http_x_forwarded_proto \$browser_scheme/);
+  assert.doesNotMatch(nginx, /proxy_set_header X-Forwarded-Proto https;/);
   assert.match(nginx, /sub_filter_once off;/);
   assert.match(nginx, /__OPENCHAMBER_INGRESS_PATH__/);
   assert.match(nginx, /_oc_ingress_shim\.js/);

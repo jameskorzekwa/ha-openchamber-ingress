@@ -1,6 +1,6 @@
 name: "OpenChamber"
 description: "Open OpenChamber securely through Home Assistant ingress"
-version: "0.0.1"
+version: "0.0.2"
 slug: "openchamber_ingress"
 url: "https://github.com/jameskorzekwa/ha-openchamber-ingress/tree/main/openchamber_ingress"
 init: false

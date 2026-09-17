@@ -12,3 +12,7 @@ ingress: true
 ingress_stream: true
 panel_icon: "mdi:message-text-outline"
 panel_title: "OpenChamber"
+options:
+  upstream_host: "192.168.0.38"
+schema:
+  upstream_host: "match(^[A-Za-z0-9.-]+$)"

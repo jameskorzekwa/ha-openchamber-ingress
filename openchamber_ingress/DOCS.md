@@ -8,6 +8,14 @@ OpenChamber assumes it runs at the root of a website. The add-on injects a small
 
 Sign in once with the existing OpenChamber password and select **Trust this device**. OpenChamber's trusted-device session lasts up to seven days. The add-on keeps that session across Home Assistant ingress-session changes and restores the last OpenChamber route when the panel is reopened. This session remains separate from the direct LAN site's session because the two pages use different browser origins.
 
+## Configuration
+
+| Option | Default | Description |
+|---|---|---|
+| `upstream_host` | `192.168.0.38` | IP address or hostname the add-on dials for OpenChamber. The TLS certificate, SNI, and `Host` header are always checked against `openchamber.jklocal.us`, so this only chooses which machine runs the Caddy front. |
+
+Restart the add-on after changing the option.
+
 ## Security
 
 - The add-on publishes no host port.

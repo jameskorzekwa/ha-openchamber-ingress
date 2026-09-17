@@ -14,6 +14,13 @@ const dockerfile = await readFile(
   new URL("../openchamber_ingress/Dockerfile", import.meta.url),
   "utf8"
 );
+const run = await readFile(
+  new URL(
+    "../openchamber_ingress/rootfs/etc/s6-overlay/s6-rc.d/openchamber-ingress/run",
+    import.meta.url
+  ),
+  "utf8"
+);
 
 test("keeps the proxy behind Supervisor ingress", () => {
   assert.match(addon, /^ingress: true$/m);
@@ -43,4 +50,16 @@ test("verifies and adapts the upstream OpenChamber endpoint", () => {
   assert.match(nginx, /sub_filter_once off;/);
   assert.match(nginx, /__OPENCHAMBER_INGRESS_PATH__/);
   assert.match(nginx, /_oc_ingress_shim\.js/);
+});
+
+test("dials a configurable upstream while keeping TLS pinned", () => {
+  assert.match(addon, /^options:\n  upstream_host: "192\.168\.0\.38"$/m);
+  assert.match(addon, /^schema:\n  upstream_host: "match\(\^\[A-Za-z0-9.-\]\+\$\)"$/m);
+  assert.match(nginx, /proxy_pass https:\/\/__UPSTREAM_HOST__;/);
+  assert.doesNotMatch(nginx, /proxy_pass https:\/\/\d+\.\d+\.\d+\.\d+;/);
+  assert.match(run, /bashio::config 'upstream_host'/);
+  assert.match(run, /\^\[A-Za-z0-9.-\]\+\$/);
+  assert.match(run, /bashio::exit\.nok/);
+  assert.match(run, /s\|__UPSTREAM_HOST__\|\$\{upstream_host\}\|g/);
+  assert.match(run, /^nginx -t$/m);
 });

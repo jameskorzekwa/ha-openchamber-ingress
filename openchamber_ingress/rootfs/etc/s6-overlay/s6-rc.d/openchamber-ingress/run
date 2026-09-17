@@ -1,4 +1,17 @@
 #!/usr/bin/with-contenv bashio
 
+# The address Nginx dials for OpenChamber. TLS verification, SNI, and the Host
+# header stay pinned to openchamber.jklocal.us in nginx.conf; only the socket
+# target is configurable.
+upstream_host="$(bashio::config 'upstream_host')"
+
+if [[ ! "${upstream_host}" =~ ^[A-Za-z0-9.-]+$ ]]; then
+    bashio::exit.nok "Invalid upstream_host option: ${upstream_host}"
+fi
+
+sed -i "s|__UPSTREAM_HOST__|${upstream_host}|g" /etc/nginx/nginx.conf
+bashio::log.info "Proxying OpenChamber ingress to https://${upstream_host}"
+
 mkdir -p /run/nginx
+nginx -t
 exec nginx -g 'daemon off;'

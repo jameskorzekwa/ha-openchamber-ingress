@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.4
+
+- Fix WebSockets in the sidebar panel (terminal, live events, process output): pin `X-Forwarded-Host` to `openchamber.jklocal.us` so OpenChamber no longer rejects every upgrade as "Invalid origin" when Home Assistant sits behind a proxy that sets that header.
+
 ## 0.0.3
 
 - Add the `upstream_host` option (default `192.168.0.38`, the bee2 host) so the OpenChamber address is configured instead of hardcoded. TLS verification stays pinned to `openchamber.jklocal.us`.

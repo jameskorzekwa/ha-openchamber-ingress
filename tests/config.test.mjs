@@ -43,6 +43,9 @@ test("verifies and adapts the upstream OpenChamber endpoint", () => {
   assert.match(nginx, /proxy_ssl_verify_depth 4;/);
   assert.match(nginx, /proxy_ssl_name openchamber\.jklocal\.us;/);
   assert.match(nginx, /proxy_set_header Origin \$upstream_origin;/);
+  // Origin and X-Forwarded-Host must name the same host, or OpenChamber
+  // rejects WebSocket upgrades as cross-origin.
+  assert.match(nginx, /proxy_set_header X-Forwarded-Host openchamber\.jklocal\.us;/);
   assert.match(nginx, /proxy_cookie_path \/ \/api\/hassio_ingress\//);
   assert.match(nginx, /proxy_set_header X-Forwarded-Proto \$browser_scheme;/);
   assert.match(nginx, /map \$http_x_forwarded_proto \$browser_scheme/);
